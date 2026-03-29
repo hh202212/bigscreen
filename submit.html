@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>2026开门红 - 业绩实时上报</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <style>
+        :root { --gold: #ffcc33; --red: #c62828; }
+        body { background: #f4f4f4; font-family: -apple-system, "Microsoft YaHei", sans-serif; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
+        .card { width: 90%; max-width: 400px; background: #fff; border-radius: 20px; box-shadow: 0 10px 30px rgba(0,0,0,0.1); overflow: hidden; }
+        .header { background: var(--red); color: white; padding: 25px 20px; text-align: center; }
+        .form-body { padding: 30px 25px; }
+        .input-group { margin-bottom: 20px; }
+        .input-group label { display: block; margin-bottom: 8px; font-weight: bold; color: #333; }
+        .input-group input { width: 100%; padding: 15px; border: 2px solid #ddd; border-radius: 12px; box-sizing: border-box; font-size: 16px; -webkit-appearance: none; }
+        #submit-btn { width: 100%; padding: 18px; background: var(--red); color: white; border: none; border-radius: 12px; font-size: 18px; font-weight: bold; cursor: pointer; }
+        #submit-btn:disabled { background: #ccc; }
+    </style>
+</head>
+<body>
+
+<div class="card">
+    <div class="header">
+        <h1>🧧 战报上报中心</h1>
+        <p>每一笔业绩都值得被看见</p>
+    </div>
+    <div class="form-body">
+        <div class="input-group">
+            <label>业务员姓名</label>
+            <input type="text" id="agent_name" placeholder="请输入姓名">
+        </div>
+        <div class="input-group">
+            <label>工号 (唯一标识)</label>
+            <input type="text" id="agent_code" placeholder="作为防重依据">
+        </div>
+        <div class="input-group">
+            <label>所属展业区/部</label>
+            <input type="text" id="branch" placeholder="如：展业一区">
+        </div>
+        <div class="input-group">
+            <label>本次上报 FYC (元)</label>
+            <input type="number" id="fyc" placeholder="请输入金额" inputmode="decimal">
+        </div>
+        <button id="submit-btn" onclick="finalSubmit()">立即提交战报</button>
+    </div>
+</div>
+
+<script>
+    // 这里的变量名和函数名做了唯一化处理，防止冲突
+    const PROJECT_URL = 'https://chqcumzmatqsqsrrdlke.supabase.co'; 
+    const ANON_KEY = 'sb_publishable_n0oBgLN6iNbUp_KxH4JgPw_gzMl4kfD';
+
+    // 仅初始化一次
+    const supabaseClient = window.supabase.createClient(PROJECT_URL, ANON_KEY);
+
+    async function finalSubmit() {
+        console.log("开始提交流程...");
+        const btn = document.getElementById('submit-btn');
+        const name = document.getElementById('agent_name').value.trim();
+        const code = document.getElementById('agent_code').value.trim();
+        const branch = document.getElementById('branch').value.trim();
+        const fycValue = parseFloat(document.getElementById('fyc').value);
+
+        if (!name || !code || !fycValue) {
+            alert("请完整填写所有信息！");
+            return;
+        }
+
+        btn.disabled = true;
+        btn.innerText = "正在提交...";
+
+        try {
+            const { error } = await supabaseClient
+                .from('fyc_leaderboard')
+                .upsert(
+                    { agent_name: name, agent_code: code, branch: branch, fyc: fycValue },
+                    { onConflict: 'agent_code' }
+                );
+
+            if (error) throw error;
+
+            alert("🎉 上报成功！");
+            document.getElementById('fyc').value = "";
+        } catch (err) {
+            alert("提交失败：" + err.message);
+            console.error(err);
+        } finally {
+            btn.disabled = false;
+            btn.innerText = "立即提交战报";
+        }
+    }
+</script>
+</body>
+</html>

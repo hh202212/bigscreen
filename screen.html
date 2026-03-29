@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <title>2026开门红实时战报中心 - 旗舰版</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+    <style>
+        :root { --gold: #ffcc33; --red: #c62828; --dark-red: #4a0000; }
+        body { background: radial-gradient(circle, var(--dark-red) 0%, #000 100%); color: #fff; margin: 0; font-family: "Microsoft YaHei", sans-serif; overflow: hidden; }
+        #header-stat { height: 160px; padding: 15px; text-align: center; background: rgba(0,0,0,0.7); border-bottom: 3px solid var(--gold); }
+        .stat-title { font-size: 32px; color: var(--gold); font-weight: bold; letter-spacing: 4px; margin-bottom: 10px; }
+        #progress-container { width: 75%; height: 30px; background: #111; margin: 10px auto; border-radius: 15px; border: 2px solid var(--gold); overflow: hidden; position: relative; }
+        #progress-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #b8860b, var(--gold), #ff8c00); transition: width 2s ease; box-shadow: 0 0 20px var(--gold); }
+        #total-fyc-num { font-size: 42px; font-weight: bold; color: #fff; text-shadow: 0 0 15px var(--gold); }
+        #chart-main { width: 96vw; height: calc(100vh - 240px); margin: 0 auto; }
+    </style>
+</head>
+<body>
+
+<div id="header-stat">
+    <div class="stat-title">🧧 2026 开门红全司累计目标 FYC 🚩</div>
+    <div id="progress-container"><div id="progress-fill"></div></div>
+    <div><span id="total-fyc-num">0</span> <small>元</small></div>
+</div>
+<div id="chart-main"></div>
+
+<script>
+    // --- 唯一配置区 ---
+    const MY_PROJECT_URL = 'https://chqcumzmatqsqsrrdlke.supabase.co'; // 确保以 https:// 开头
+    const MY_ANON_KEY = 'sb_publishable_n0oBgLN6iNbUp_KxH4JgPw_gzMl4kfD';     // 截图里那个 sb_publishable...
+
+    // 整个脚本只声明一次客户端，变量名设为唯一的 clientRef
+    const clientRef = window.supabase.createClient(MY_PROJECT_URL, MY_ANON_KEY);
+    const mainChart = echarts.init(document.getElementById('chart-main'));
+
+    const nameMask = (n) => n.length <= 2 ? n[0]+"*" : n[0]+"*"+n.slice(-1);
+
+    async function fetchData() {
+        try {
+            // 获取总额
+            let { data: sum, error: e1 } = await clientRef.rpc('get_total_fyc');
+            if (e1 || sum === null) {
+                const { data: all } = await clientRef.from('fyc_leaderboard').select('fyc');
+                sum = all ? all.reduce((a, c) => a + (c.fyc || 0), 0) : 0;
+            }
+
+            // 获取前10
+            const { data: list, error: e2 } = await clientRef.from('fyc_leaderboard').select('*').order('fyc', { ascending: false }).limit(10);
+            
+            // 更新界面
+            document.getElementById('total-fyc-num').innerText = Math.floor(sum).toLocaleString();
+            document.getElementById('progress-fill').style.width = Math.min((sum / 10000000) * 100, 100) + '%';
+
+            if (list) {
+                const draw = [...list].reverse();
+                mainChart.setOption({
+                    grid: { left: '15%', right: '12%', bottom: '3%', top: '2%' },
+                    xAxis: { type: 'value', show: false },
+                    yAxis: { type: 'category', data: draw.map(d => `${nameMask(d.agent_name)}\n${d.branch||''}`), axisLabel: { color: '#fff', fontSize: 18 } },
+                    series: [{ type: 'bar', data: draw.map(d => d.fyc), itemStyle: { color: '#ff4d4d', borderRadius: [0, 20, 20, 0] }, label: { show: true, position: 'right', color: '#ffcc33', fontSize: 20 } }]
+                });
+            }
+        } catch (err) { console.error("数据加载失败", err); }
+    }
+
+    // 监听与初始化
+    clientRef.channel('db_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'fyc_leaderboard' }, () => fetchData()).subscribe();
+    fetchData();
+    setInterval(fetchData, 20000);
+    window.onresize = () => mainChart.resize();
+</script>
+</body>
+</html>
