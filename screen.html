@@ -2,73 +2,160 @@
 <html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <title>2026开门红实时战报中心 - 旗舰版</title>
+    <title>2026 平安开门红·实时战报大屏</title>
     <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-    <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
     <style>
-        :root { --gold: #ffcc33; --red: #c62828; --dark-red: #4a0000; }
-        body { background: radial-gradient(circle, var(--dark-red) 0%, #000 100%); color: #fff; margin: 0; font-family: "Microsoft YaHei", sans-serif; overflow: hidden; }
-        #header-stat { height: 160px; padding: 15px; text-align: center; background: rgba(0,0,0,0.7); border-bottom: 3px solid var(--gold); }
-        .stat-title { font-size: 32px; color: var(--gold); font-weight: bold; letter-spacing: 4px; margin-bottom: 10px; }
-        #progress-container { width: 75%; height: 30px; background: #111; margin: 10px auto; border-radius: 15px; border: 2px solid var(--gold); overflow: hidden; position: relative; }
-        #progress-fill { width: 0%; height: 100%; background: linear-gradient(90deg, #b8860b, var(--gold), #ff8c00); transition: width 2s ease; box-shadow: 0 0 20px var(--gold); }
-        #total-fyc-num { font-size: 42px; font-weight: bold; color: #fff; text-shadow: 0 0 15px var(--gold); }
-        #chart-main { width: 96vw; height: calc(100vh - 240px); margin: 0 auto; }
+        :root {
+            --primary-gold: linear-gradient(180deg, #FFE7A3 0%, #D4AF37 50%, #8A6E2F 100%);
+            --pingan-red: radial-gradient(circle, #8B0000 0%, #200000 100%);
+        }
+
+        body, html {
+            margin: 0; padding: 0; width: 100%; height: 100%;
+            overflow: hidden; background: var(--pingan-red);
+            font-family: "Microsoft YaHei", sans-serif;
+        }
+
+        /* 动态背景 */
+        #canvas-bg { position: fixed; top: 0; left: 0; z-index: 0; }
+
+        .container {
+            position: relative; z-index: 1;
+            height: 100vh; display: flex; flex-direction: column;
+            align-items: center; justify-content: center;
+            color: #fff; text-shadow: 0 0 20px rgba(0,0,0,0.8);
+        }
+
+        /* 标题设计 */
+        .title-box {
+            font-size: 3.5rem; font-weight: 900; letter-spacing: 5px;
+            margin-bottom: 20px; text-align: center;
+            background: var(--primary-gold); -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            filter: drop-shadow(0 5px 15px rgba(212,175,55,0.4));
+        }
+
+        /* 数字展示 */
+        .number-box {
+            font-size: 9rem; font-weight: bold; font-family: 'Arial', sans-serif;
+            margin: 10px 0; display: flex; align-items: baseline;
+            transition: transform 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+        .unit { font-size: 2.5rem; margin-left: 15px; color: #D4AF37; }
+
+        /* 进度条外壳 */
+        .progress-wrapper {
+            width: 80%; height: 40px; background: rgba(255,255,255,0.1);
+            border-radius: 20px; border: 2px solid rgba(212,175,55,0.3);
+            overflow: hidden; box-shadow: inset 0 0 15px rgba(0,0,0,0.5);
+        }
+        /* 进度条填充 */
+        .progress-bar {
+            height: 100%; width: 0%;
+            background: linear-gradient(90deg, #8A6E2F, #D4AF37, #FFE7A3);
+            box-shadow: 0 0 20px #D4AF37;
+            transition: width 1s ease-out; position: relative;
+        }
+
+        .goal-text {
+            font-size: 1.8rem; margin-top: 20px; color: rgba(255,255,255,0.7);
+        }
+
+        /* 数字变动特效类 */
+        .pop { transform: scale(1.1); }
     </style>
 </head>
 <body>
+    <canvas id="canvas-bg"></canvas>
+    <div class="container">
+        <div class="title-box">2026 开门红·平安展业区累计目标 FYC</div>
+        <div class="number-box" id="fyc-total">0<span class="unit">元</span></div>
+        <div class="progress-wrapper">
+            <div class="progress-bar" id="fyc-progress"></div>
+        </div>
+        <div class="goal-text" id="goal-display">目标：0 元</div>
+    </div>
 
-<div id="header-stat">
-    <div class="stat-title">🧧 2026 开门红全司累计目标 FYC 🚩</div>
-    <div id="progress-container"><div id="progress-fill"></div></div>
-    <div><span id="total-fyc-num">0</span> <small>元</small></div>
-</div>
-<div id="chart-main"></div>
+    <script>
+        // --- 1. 基础配置 (请填入你的真实信息) ---
+        const SUPABASE_URL = 'https://chqcumzmatqsqsrrdlke.supabase.co';
+        const SUPABASE_KEY = 'sb_publishable_n0oBgLN6iNbUp_KxH4JgPw_gzMl4kfD;
+        const GOAL = 10000000; // 目标金额：1000万
+        
+        const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
-<script>
-    // --- 唯一配置区 ---
-    const MY_PROJECT_URL = 'https://chqcumzmatqsqsrrdlke.supabase.co'; // 确保以 https:// 开头
-    const MY_ANON_KEY = 'sb_publishable_n0oBgLN6iNbUp_KxH4JgPw_gzMl4kfD';     // 截图里那个 sb_publishable...
-
-    // 整个脚本只声明一次客户端，变量名设为唯一的 clientRef
-    const clientRef = window.supabase.createClient(MY_PROJECT_URL, MY_ANON_KEY);
-    const mainChart = echarts.init(document.getElementById('chart-main'));
-
-    const nameMask = (n) => n.length <= 2 ? n[0]+"*" : n[0]+"*"+n.slice(-1);
-
-    async function fetchData() {
-        try {
-            // 获取总额
-            let { data: sum, error: e1 } = await clientRef.rpc('get_total_fyc');
-            if (e1 || sum === null) {
-                const { data: all } = await clientRef.from('fyc_leaderboard').select('fyc');
-                sum = all ? all.reduce((a, c) => a + (c.fyc || 0), 0) : 0;
+        // --- 2. 核心逻辑 ---
+        async function fetchTotal() {
+            const { data, error } = await supabase.from('fyc_leaderboard').select('fyc_amount');
+            if (!error) {
+                const total = data.reduce((sum, item) => sum + item.fyc_amount, 0);
+                updateDisplay(total);
             }
+        }
 
-            // 获取前10
-            const { data: list, error: e2 } = await clientRef.from('fyc_leaderboard').select('*').order('fyc', { ascending: false }).limit(10);
+        function updateDisplay(value) {
+            const numEl = document.getElementById('fyc-total');
+            const progEl = document.getElementById('fyc-progress');
             
-            // 更新界面
-            document.getElementById('total-fyc-num').innerText = Math.floor(sum).toLocaleString();
-            document.getElementById('progress-fill').style.width = Math.min((sum / 10000000) * 100, 100) + '%';
+            // 数字格式化
+            numEl.innerHTML = `${Math.floor(value).toLocaleString()}<span class="unit">元</span>`;
+            
+            // 进度条计算
+            const percent = Math.min((value / GOAL) * 100, 100);
+            progEl.style.width = percent + '%';
+            
+            document.getElementById('goal-display').innerText = `年度目标：${GOAL.toLocaleString()} 元 | 当前进度：${percent.toFixed(1)}%`;
 
-            if (list) {
-                const draw = [...list].reverse();
-                mainChart.setOption({
-                    grid: { left: '15%', right: '12%', bottom: '3%', top: '2%' },
-                    xAxis: { type: 'value', show: false },
-                    yAxis: { type: 'category', data: draw.map(d => `${nameMask(d.agent_name)}\n${d.branch||''}`), axisLabel: { color: '#fff', fontSize: 18 } },
-                    series: [{ type: 'bar', data: draw.map(d => d.fyc), itemStyle: { color: '#ff4d4d', borderRadius: [0, 20, 20, 0] }, label: { show: true, position: 'right', color: '#ffcc33', fontSize: 20 } }]
-                });
+            // 动效触发
+            numEl.classList.add('pop');
+            setTimeout(() => numEl.classList.remove('pop'), 200);
+        }
+
+        // --- 3. 实时监听 ---
+        supabase.channel('custom-all-channel')
+            .on('postgres_changes', { event: '*', schema: 'public', table: 'fyc_leaderboard' }, () => {
+                fetchTotal();
+            }).subscribe();
+
+        // --- 4. 炫酷背景粒子效果 ---
+        const canvas = document.getElementById('canvas-bg');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+        function initCanvas() {
+            canvas.width = window.innerWidth;
+            canvas.height = window.innerHeight;
+        }
+        class Particle {
+            constructor() {
+                this.x = Math.random() * canvas.width;
+                this.y = Math.random() * canvas.height;
+                this.size = Math.random() * 3;
+                this.speed = Math.random() * 0.5 + 0.2;
+                this.opacity = Math.random();
             }
-        } catch (err) { console.error("数据加载失败", err); }
-    }
+            draw() {
+                ctx.fillStyle = `rgba(212, 175, 55, ${this.opacity})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+            update() {
+                this.y -= this.speed;
+                if (this.y < 0) this.y = canvas.height;
+            }
+        }
+        function animate() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach(p => { p.update(); p.draw(); });
+            requestAnimationFrame(animate);
+        }
+        initCanvas();
+        for(let i=0; i<100; i++) particles.push(new Particle());
+        animate();
+        window.addEventListener('resize', initCanvas);
 
-    // 监听与初始化
-    clientRef.channel('db_changes').on('postgres_changes', { event: '*', schema: 'public', table: 'fyc_leaderboard' }, () => fetchData()).subscribe();
-    fetchData();
-    setInterval(fetchData, 20000);
-    window.onresize = () => mainChart.resize();
-</script>
+        // 初始化加载
+        fetchTotal();
+    </script>
 </body>
-</html> 
+</html>
